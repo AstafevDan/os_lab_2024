@@ -12,7 +12,7 @@
 #include <sys/types.h>
 
 #include "pthread.h"
-#include "mult_modulo.h"
+#include "utils.h"
 
 struct FactorialArgs {
   uint64_t begin;

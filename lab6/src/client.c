@@ -13,29 +13,14 @@
 #include <sys/types.h>
 
 #include "pthread.h"
-#include "mult_modulo.h"
+#include "utils.h"
 
 struct Server {
   char ip[255];
   int port;
 };
 
-bool ConvertStringToUI64(const char *str, uint64_t *val) {
-  char *end = NULL;
-  unsigned long long i = strtoull(str, &end, 10);
-  if (errno == ERANGE) {
-    fprintf(stderr, "Out of uint64_t range: %s\n", str);
-    return false;
-  }
-
-  if (errno != 0)
-    return false;
-
-  *val = i;
-  return true;
-}
-
-uint64_t WaitForResponse(void *args) {
+void *WaitForResponse(void *args) {
   int sck = *((int *)args);
   char response[sizeof(uint64_t)];
   if (recv(sck, response, sizeof(response), 0) < 0) {
@@ -43,8 +28,9 @@ uint64_t WaitForResponse(void *args) {
     exit(1);
   }
   close(sck);
-  uint64_t ans = 0;
-  memcpy(&ans, response, sizeof(uint64_t));
+  uint64_t *ans = malloc(sizeof(uint64_t));
+  memcpy(ans, response, sizeof(uint64_t));
+  return (void *)ans;
 }
 
 int main(int argc, char **argv) {
@@ -89,11 +75,12 @@ int main(int argc, char **argv) {
       case 2:
         // TODO: your code here
         a = fopen(optarg, "r");
-        if (a == 0) {
+        if (a == NULL) {
           printf("Failed to open file!\n");
           return 1;
-        } else
+        } else {
           fclose(a);
+        }
         memcpy(servers, optarg, strlen(optarg));
         break;
       default:
@@ -170,6 +157,7 @@ int main(int argc, char **argv) {
 
     if (connect(sck[i], (struct sockaddr *)&server, sizeof(server)) < 0) {
       fprintf(stderr, "Connection failed\n");
+      close(sck[i]);
       exit(1);
     }
 
@@ -188,8 +176,10 @@ int main(int argc, char **argv) {
       exit(1);
     }
 
+    int *sck_copy = malloc(sizeof(int));
+    *sck_copy = sck[i];
     if (pthread_create(&threads[i], NULL, (void *)WaitForResponse,
-                       (void *)&(sck[i]))) {
+                       (void *)sck_copy)) {
       printf("Error: pthread_create failed!\n");
       return 1;
     }
@@ -198,9 +188,10 @@ int main(int argc, char **argv) {
   uint64_t answer = 1;
   uint64_t response = 0;
   for (int i = 0; i < servers_num; i++) {
-    char buff[sizeof(uint64_t)];
+    uint64_t *response;
     pthread_join(threads[i], (void **)&response);
-    answer = MultModulo(response, answer, mod);
+    answer = MultModulo(*response, answer, mod);
+    free(response);
   }
 
   free(to);
